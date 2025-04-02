@@ -1,6 +1,13 @@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useState } from "react";
-import { createAssociatedTokenAccountInstruction, createInitializeMint2Instruction, createMintToInstruction, getAssociatedTokenAddressSync, getMinimumBalanceForRentExemptMint, MINT_SIZE, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import {
+    createAssociatedTokenAccountInstruction, createInitializeMint2Instruction,
+    createMintToInstruction,
+    getAssociatedTokenAddressSync,
+    getMinimumBalanceForRentExemptMint,
+    MINT_SIZE,
+    TOKEN_PROGRAM_ID
+} from '@solana/spl-token';
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 
 export function TokenLaunchpad() {
@@ -14,54 +21,80 @@ export function TokenLaunchpad() {
     async function createToken() {
         const lamports = await getMinimumBalanceForRentExemptMint(connection);
         const keypair = Keypair.generate();
+
         if (wallet.publicKey) {
-            const transaction = new Transaction().add(
+
+            const transaction = new Transaction();
+
+            // Step 1: Creating a new account for the mint
+            transaction.add(
                 SystemProgram.createAccount({
                     fromPubkey: wallet.publicKey,
                     newAccountPubkey: keypair.publicKey,
                     space: MINT_SIZE,
                     lamports,
                     programId: TOKEN_PROGRAM_ID,
-                }),
-
-
-                createInitializeMint2Instruction(keypair.publicKey, 9, wallet.publicKey, wallet.publicKey, TOKEN_PROGRAM_ID),
-                
+                })
             );
 
-            const latestBlockhash = await connection.getLatestBlockhash();
-            transaction.recentBlockhash = latestBlockhash.blockhash;
-            transaction.feePayer = wallet.publicKey;
+            console.log("1. mint account created");
 
-            transaction.partialSign(keypair)
-            const res = await wallet.sendTransaction(transaction, connection);
-            console.log("Token Created:", res);
+            // Step 2: Initializing the mint
+            transaction.add(
+                createInitializeMint2Instruction(keypair.publicKey, 9, wallet.publicKey, wallet.publicKey, TOKEN_PROGRAM_ID)
 
+            );
+            console.log("2. Initializing the mint");
 
-
-            // Create an associated token account
-            const associatedToken = getAssociatedTokenAddressSync(  //calculates the associated token account address for the wallet
-                keypair.publicKey,  //token mint acc
-                wallet.publicKey,  // akash's_address
+            // Step 3: Creating Associated Token Account (ATA)
+            const associatedToken = getAssociatedTokenAddressSync(
+                keypair.publicKey,
+                wallet.publicKey,
                 false,
-                TOKEN_PROGRAM_ID,  // Token program 
+                TOKEN_PROGRAM_ID,
             );
+            console.log("3. Creating Associated Token Account (ATA) : " + associatedToken);
 
-            console.log(associatedToken.toBase58());
-
-            const transaction2 = new Transaction().add(
+            transaction.add(
                 createAssociatedTokenAccountInstruction(
                     wallet.publicKey,
                     associatedToken,
                     wallet.publicKey,
                     keypair.publicKey,
                     TOKEN_PROGRAM_ID,
-                ),
+                )
+            );
+            console.log("3. (ATA) : finished");
 
-                createMintToInstruction(keypair.publicKey, associatedToken, wallet.publicKey, initialSupply || 1000000, [], TOKEN_PROGRAM_ID)
+            // Step 4: Minting tokens to the Associated Token Account
+
+            transaction.add(
+                createMintToInstruction(keypair.publicKey, associatedToken, wallet.publicKey, initialSupply || 100000000000000, [], TOKEN_PROGRAM_ID)
+
             );
 
-            await wallet.sendTransaction(transaction2, connection);
+            console.log("4. Minting tokens to the Associated Token Account");
+
+            // Getting the latest blockhash and set the fee payer
+            console.log("5. Getting the latest blockhash");
+
+            const latestBlockhash = await connection.getLatestBlockhash();
+            transaction.recentBlockhash = latestBlockhash.blockhash;
+            transaction.feePayer = wallet.publicKey;
+            // Sign the transaction
+            console.log("6. Sign the transaction");
+
+
+            try {
+                transaction.partialSign(keypair)
+                const res = await wallet.sendTransaction(transaction, connection);
+                console.log("Token Created:", res);
+            } catch (e) {
+                console.error("Transaction signing failed:", e);
+            }
+
+            console.log("Coin created successfully");
+
 
         }
     }
@@ -75,4 +108,3 @@ export function TokenLaunchpad() {
         <button className='btn' onClick={createToken}>Create a token</button>
     </div>
 }
-
