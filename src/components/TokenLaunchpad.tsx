@@ -1,6 +1,6 @@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useState } from "react";
-import { createInitializeMint2Instruction, getMinimumBalanceForRentExemptMint, MINT_SIZE, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { createAssociatedTokenAccountInstruction, createInitializeMint2Instruction, createMintToInstruction, getAssociatedTokenAddressSync, getMinimumBalanceForRentExemptMint, MINT_SIZE, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
 
 export function TokenLaunchpad() {
@@ -26,6 +26,7 @@ export function TokenLaunchpad() {
 
 
                 createInitializeMint2Instruction(keypair.publicKey, 9, wallet.publicKey, wallet.publicKey, TOKEN_PROGRAM_ID),
+                
             );
 
             const latestBlockhash = await connection.getLatestBlockhash();
@@ -34,9 +35,33 @@ export function TokenLaunchpad() {
 
             transaction.partialSign(keypair)
             const res = await wallet.sendTransaction(transaction, connection);
-            console.log(res);
+            console.log("Token Created:", res);
 
 
+
+            // Create an associated token account
+            const associatedToken = getAssociatedTokenAddressSync(  //calculates the associated token account address for the wallet
+                keypair.publicKey,  //token mint acc
+                wallet.publicKey,  // akash's_address
+                false,
+                TOKEN_PROGRAM_ID,  // Token program 
+            );
+
+            console.log(associatedToken.toBase58());
+
+            const transaction2 = new Transaction().add(
+                createAssociatedTokenAccountInstruction(
+                    wallet.publicKey,
+                    associatedToken,
+                    wallet.publicKey,
+                    keypair.publicKey,
+                    TOKEN_PROGRAM_ID,
+                ),
+
+                createMintToInstruction(keypair.publicKey, associatedToken, wallet.publicKey, initialSupply || 1000000, [], TOKEN_PROGRAM_ID)
+            );
+
+            await wallet.sendTransaction(transaction2, connection);
 
         }
     }
